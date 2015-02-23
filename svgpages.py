@@ -19,11 +19,13 @@ Arguments:
 __version__ = "0.1"
 from docopt import docopt
 
-import re
-import os.path
+import re, os
+import subprocess, threading
 from lxml import etree
-from copy import copy
+#from copy import copy
 
+
+INKSCAPE = '/usr/bin/inkscape'
 
 class Pattern:
     def __init__(self, pat):
@@ -82,14 +84,33 @@ class Pattern:
         else:
             return list(ret)
 
+def popen_with_callback(popen_args, callback=None):
+    """
+    Runs the given `popen_args` in a `subprocess.Popen`, and then calls the `callback` function when the subprocess completes.
+    `callback` is a callable object, and `popen_args` is a list/tuple of arguments that are unpacked into `subprocess.Popen`.
 
-class Organizer:
-    def __init__(self, layers):
-        self.layers = layers
+    http://stackoverflow.com/questions/2581817/python-subprocess-callback-when-cmd-exits
+    """
+    if callback is None:
+        def callback():
+            pass
 
-    def validate_name(self, layer):
-        preg = re.compile(r'\<(?P<pattern>(\d+|\d+-|-\d+|\d+-\d+)(, ?(\d+|\d+-|-\d+|\d+-\d+))*)\>$')
-        return preg.match(layer.attrib.get(ns('inkscape:label'), '')) is not None
+    def run_in_thread(popen_args, callback):
+        proc = subprocess.Popen(*popen_args)
+        print "subprocess started, PID {}".format(proc.pid)
+        proc.wait()
+        print "subprocess finished, firing callback"
+        callback()
+        print "callback executed"
+        return
+
+    thread = threading.Thread(target=run_in_thread, args=(popen_args, callback))
+    thread.start()
+    # returns immediately after the thread starts
+    return thread
+
+def basename(filename, offset=1):
+    return '.'.join(filename.split('.')[:-offset])
 
 namespaces = {
     'dc': "http://purl.org/dc/elements/1.1/",
@@ -158,21 +179,35 @@ def make(infile, page, output_format):
                 element.getparent().remove(element)
 
     outfile = '{basename}.{page}.svg'.format(
-            basename = '.'.join(infile.split('.')[:-1]), page = page)
+            basename = basename(infile), page = page)
 
     with open(outfile, 'w') as f:
         f.write(etree.tostring(svg))
+        print "{} generated".format(outfile)
 
-def main():
-    navigate(args)
-    return
-    svg = etree.parse(args['<outfile>']).getroot()
+    if output_format == 'pdf':
+        generate_pdf(outfile)
 
-    patterns = []
-    for element in svg.iterfind('svg:g', namespaces=namespaces):
-        if element.attrib.get(ns('inkscape:groupmode'), None) == 'layer':
-            print element.attrib.get(ns('inkscape:label'), 'ERROR: missing layer label')
+def generate_pdf(svgfile, inkscape_args = []):
+    for arg in inkscape_args:
+        if arg.startswith('--export-area-'):
+            break
+    else:
+        inkscape_args.append('--export-area-page')
+
+    inkscape_io = [
+            '--export-pdf={}.pdf'.format(basename(svgfile)),
+            '--file={}'.format(svgfile)]
+
+    inkscape_cmd = [INKSCAPE] + inkscape_args + inkscape_io
+
+    print inkscape_cmd
+
+    def remove_svg_source_file():
+        return os.remove(svgfile)
+
+    popen_with_callback((inkscape_cmd,), callback=remove_svg_source_file)
 
 if __name__ == "__main__":
     args = docopt(__doc__, version=__version__)
-    main()
+    navigate(args)
