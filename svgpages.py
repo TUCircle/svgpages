@@ -1,14 +1,15 @@
 #!/usr/bin/env python2
 # coding: utf-8
-"""Extract a specifiv 'page' from a multilayer svg document.
+"""Extract a specific 'page' from a multilayer svg document.
 
 Usage:
-    svgpages.py <outfile>
-    svgpages.py batch [-p <pages>] [-f <format>] <infile>
+    svgpages.py [-i <args>...] <outfile>
+    svgpages.py batch [-p <pages>] [-f <format>] [-i <args>...] <infile>
 
 Options:
     --pages, -p <pages>    Pages to generate. [default: all]
     --format, -f <format>  Output format. [default: svg]
+    --inkscape, -i <args>  Arguments to be passed to inkscape
 
 Arguments:
     <outfile>  output file, in <basename>.<page>.<extension> format
@@ -22,7 +23,6 @@ from docopt import docopt
 import re, os
 import subprocess, threading
 from lxml import etree
-#from copy import copy
 
 
 INKSCAPE = '/usr/bin/inkscape'
@@ -135,8 +135,8 @@ def get_svg(svg_original, page):
                 element.getparent().remove(element)
 
 def navigate(args):
-#   from json import dumps
-#   print dumps(args, indent=4) + '\n'
+    from json import dumps
+    print dumps(args, indent=4) + '\n'
 
     if not args['batch'] and args['<outfile>'] is not None:
         # makefile style
@@ -158,9 +158,9 @@ def navigate(args):
         if not os.path.isfile(filename):
             raise RuntimeError("basename not valid, `{}` does not exist".format(filename))
 
-        make(filename, page, ext)
+        make(filename, page, ext, args['--inkscape'])
 
-def make(infile, page, output_format):
+def make(infile, page, output_format, inkscape_args):
     # in any case: generate the svg file first
     svg = etree.parse(infile).getroot()
     pat_re = re.compile(r'\<(?P<pattern>(\d+|\d+-|-\d+|\d+-\d+)(,(\d+|\d+-|-\d+|\d+-\d+))*)\>$')
@@ -183,9 +183,9 @@ def make(infile, page, output_format):
         print "{} generated".format(outfile)
 
     if output_format == 'pdf':
-        generate_pdf(outfile)
+        generate_pdf(outfile, inkscape_args)
     elif output_format == 'pdf_tex':
-        generate_tex(outfile)
+        generate_tex(outfile, inkscape_args)
 
 def generate_pdf(svgfile, inkscape_args = []):
     for arg in inkscape_args:
