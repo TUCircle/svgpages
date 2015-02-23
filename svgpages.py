@@ -32,7 +32,7 @@ class Pattern:
         self.pat = pat
         self.split()
 
-        if len(self.children) == 0:
+        if not self.children:
             self.classify()
 
     def split(self):
@@ -40,7 +40,7 @@ class Pattern:
         if len(child_patterns) > 1:
             self.children = [Pattern(p.strip()) for p in child_patterns]
         else:
-            self.children = []
+            self.children = False
         return
 
     def classify(self):
@@ -58,7 +58,7 @@ class Pattern:
             self.ptype = None
 
     def test(self, num):
-        if len(self.children) > 0:
+        if self.children:
             return any((child.test(num) for child in self.children))
         else:
             if self.ptype == 'all':
@@ -76,7 +76,7 @@ class Pattern:
                 return False
 
     def max(self):
-        if len(self.children) > 0:
+        if self.children:
             return max((child.max() for child in self.children))
         else:
             if self.ptype == 'all':
@@ -219,7 +219,6 @@ def make(infile, page, output_format, inkscape_args):
 
     with open(outfile, 'w') as f:
         f.write(etree.tostring(svg))
-        print "{} generated".format(outfile)
 
     if output_format == 'pdf':
         generate_pdf(outfile, inkscape_args)
