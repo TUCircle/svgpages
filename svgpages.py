@@ -96,9 +96,14 @@ class Pattern:
 
 def popen_with_callback(popen_cmd, popen_kwargs={}, callback=None):
     """
-    Runs the given `popen_args` in a `subprocess.Popen`, and then calls the `callback` function when the subprocess completes.
-    `callback` is a callable object, and `popen_args` is a list/tuple of arguments that are unpacked into `subprocess.Popen`.
+    Runs the given `popen_cmd` with `popen_kwargs` in a `subprocess.Popen`,
+    and then calls the `callback` function when the subprocess completes.
 
+    `callback` is a callable object
+    `popen_cmd` is the command list (executable at [0], options at [1:])
+    `popen_kwargs` is a dictionary of keyword arguments that is unpacked into `subprocess.Popen`
+
+    seen at
     http://stackoverflow.com/questions/2581817/python-subprocess-callback-when-cmd-exits
     """
     if callback is None:
@@ -150,9 +155,8 @@ def check_args(infile=None, output_format=None, pattern=None):
             raise RuntimeError("pattern invalid: {}".format(pattern))
 
 def navigate(args):
-    from json import dumps
-    print dumps(args, indent=4) + '\n'
-
+#   from json import dumps
+#   print dumps(args, indent=4) + '\n'
     if not args['batch'] and args['<outfile>'] is not None:
         # makefile style
         splitted_outfile = args['<outfile>'].split('.')
