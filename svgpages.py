@@ -12,7 +12,7 @@ Options:
     --inkscape, -i <args>  Arguments to be passed to inkscape
 
 Arguments:
-    <outfile>  output file, in <basename>.<page>.<extension> format
+    <outfile>  output file, in <basename>[.<page>].<extension> format
     <infile>   input svg file for batch mode
 
 """
@@ -123,6 +123,11 @@ def popen_with_callback(popen_cmd, popen_kwargs={}, callback=None):
     return thread
 
 def basename(filename, offset=1):
+    """
+    Returning the filename without the (last n) extension(s).
+        basename('foobar.tar.gz')    == 'foobar.tar'
+        basename('foobar.tar.gz', 2) == 'foobar'
+    """
     return '.'.join(filename.split('.')[:-offset])
 
 namespaces = {
@@ -161,19 +166,24 @@ def navigate(args):
         # makefile style
         splitted_outfile = args['<outfile>'].split('.')
 
-        if len(splitted_outfile) < 3:
-            raise RuntimeError("outfile must be in <basename>.<page>.<ext> format")
-
-        try:
-            page = int(splitted_outfile[-2])
-        except ValueError:
-            raise RuntimeError("page number must be a valid integer")
+        if len(splitted_outfile) < 2:
+            raise RuntimeError("outfile must be in <basename>[.<page>].<ext> format")
+        elif len(splitted_outfile) == 2:
+            page = None
+            infile = basename(args['<outfile>']) + '.svg'
+        else:  # len(splitted_outfile) >= 3
+            try:
+                page = int(splitted_outfile[-2])
+            except ValueError:
+                page = None
+                infile = basename(args['<outfile>']) + '.svg'
+            else:
+                infile = basename(args['<outfile>'], 2) + '.svg'
 
         ext = splitted_outfile[-1]
-        filename = '.'.join(splitted_outfile[:-2]) + '.svg'
-        check_args(filename, ext)
+        check_args(infile, ext)
 
-        make(filename, page, ext, args['--inkscape'])
+        make(infile, page, ext, args['--inkscape'])
 
     elif args['batch'] and args['<infile>'] is not None:
         check_args(args['<infile>'], args['--format'], args['--pages'])
@@ -208,45 +218,51 @@ def layers(svgfile):
             yield element, pat_str
 
 def make(infile, page, output_format, inkscape_args):
-    # in any case: generate the svg file first
-    svg = etree.parse(infile).getroot()
+    if page is not None:
+        # in any case: generate the svg file first
+        svg = etree.parse(infile).getroot()
 
-    for element, pat_str in layers(svg):
-        if pat_str is None:
-            continue
-        p = Pattern(pat_str)
-        if not p.test(page):
-            element.getparent().remove(element)
+        for element, pat_str in layers(svg):
+            if pat_str is None:
+                continue
+            p = Pattern(pat_str)
+            if not p.test(page):
+                element.getparent().remove(element)
 
-    outfile = '{basename}.{page}.svg'.format(
-            basename = basename(infile), page = page)
-
-    with open(outfile, 'w') as f:
-        f.write(etree.tostring(svg))
+        svgfile = '{basename}.{page}.svg'.format(
+                basename = basename(infile), page = page)
+        with open(svgfile, 'w') as f:
+            f.write(etree.tostring(svg))
+        cleanup = True
+    else:
+        svgfile = infile
+        cleanup = False
 
     if output_format == 'pdf':
-        generate_pdf(outfile, inkscape_args)
+        generate_pdf(svgfile, inkscape_args, cleanup)
     elif output_format == 'pdf_tex':
-        generate_tex(outfile, inkscape_args)
+        generate_tex(svgfile, inkscape_args, cleanup)
 
-def generate_pdf(svgfile, inkscape_args = []):
+def generate_pdf(svgfile, inkscape_args = [], cleanup = False):
     for arg in inkscape_args:
         if arg.startswith('--export-area-'):
             break
     else:
         inkscape_args.append('--export-area-page')
-
     inkscape_io = [
             '--export-pdf={}.pdf'.format(basename(svgfile)),
             '--file={}'.format(svgfile)]
-
     inkscape_cmd = [INKSCAPE] + inkscape_args + inkscape_io
 
-    popen_with_callback(inkscape_cmd, callback=lambda: os.remove(svgfile))
+    def callback():
+        if cleanup:
+            os.remove(svgfile)
 
-def generate_tex(svgfile, inkscape_args = []):
+    popen_with_callback(inkscape_cmd, callback=callback)
+
+def generate_tex(svgfile, inkscape_args = [], cleanup = False):
     inkscape_args.append('--export-latex')
-    generate_pdf(svgfile, inkscape_args)
+    generate_pdf(svgfile, inkscape_args, cleanup)
 
 if __name__ == "__main__":
     args = docopt(__doc__, version=__version__)
