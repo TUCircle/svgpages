@@ -21,7 +21,7 @@ Currently, three different formats are supported:
 - `svg`: basic functionality, an svg file stripped of invisible layers is created.
     This is being done in all cases, the other formats depend on the svg.
 - `pdf`: pdf file, converted using Inkscape
-- `pdf_tex`: Using Inkscape, graphics can be [exported][inkscape-pdftex] for LaTeX use.
+- `pdf_tex`: Using Inkscape, graphics can be [exported for LaTeX use][inkscape-pdftex].
     This creates two different files, a `.pdf` file without text
     and a `.pdf_tex` file, which typesets the text and includes the pdf file.
 - `png`: create png image, by default with 90 dpi.
