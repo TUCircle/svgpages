@@ -84,7 +84,7 @@ class Pattern:
         else:
             return list(ret)
 
-def popen_with_callback(popen_args, callback=None):
+def popen_with_callback(popen_cmd, popen_kwargs={}, callback=None):
     """
     Runs the given `popen_args` in a `subprocess.Popen`, and then calls the `callback` function when the subprocess completes.
     `callback` is a callable object, and `popen_args` is a list/tuple of arguments that are unpacked into `subprocess.Popen`.
@@ -95,16 +95,14 @@ def popen_with_callback(popen_args, callback=None):
         def callback():
             pass
 
-    def run_in_thread(popen_args, callback):
-        proc = subprocess.Popen(*popen_args)
-        print "subprocess started, PID {}".format(proc.pid)
+    def run_in_thread(cmd, kwargs, callback):
+        proc = subprocess.Popen(cmd, **kwargs)
+        print "{} started as subprocess (PID {})".format(cmd[0], proc.pid)
         proc.wait()
-        print "subprocess finished, firing callback"
         callback()
-        print "callback executed"
         return
 
-    thread = threading.Thread(target=run_in_thread, args=(popen_args, callback))
+    thread = threading.Thread(target=run_in_thread, args=(popen_cmd, popen_kwargs, callback))
     thread.start()
     # returns immediately after the thread starts
     return thread
@@ -175,7 +173,6 @@ def make(infile, page, output_format):
                 continue
             p = Pattern(pat_match.group(1))
             if not p.test(page):
-                print "Layer `{}` to be removed.".format(layer_name)
                 element.getparent().remove(element)
 
     outfile = '{basename}.{page}.svg'.format(
@@ -187,6 +184,8 @@ def make(infile, page, output_format):
 
     if output_format == 'pdf':
         generate_pdf(outfile)
+    elif output_format == 'pdf_tex':
+        generate_tex(outfile)
 
 def generate_pdf(svgfile, inkscape_args = []):
     for arg in inkscape_args:
@@ -201,12 +200,11 @@ def generate_pdf(svgfile, inkscape_args = []):
 
     inkscape_cmd = [INKSCAPE] + inkscape_args + inkscape_io
 
-    print inkscape_cmd
+    popen_with_callback(inkscape_cmd, callback=lambda: os.remove(svgfile))
 
-    def remove_svg_source_file():
-        return os.remove(svgfile)
-
-    popen_with_callback((inkscape_cmd,), callback=remove_svg_source_file)
+def generate_tex(svgfile, inkscape_args = []):
+    inkscape_args.append('--export-latex')
+    generate_pdf(svgfile, inkscape_args)
 
 if __name__ == "__main__":
     args = docopt(__doc__, version=__version__)
