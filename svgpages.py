@@ -8,7 +8,7 @@ Usage:
 
 Options:
     --pages, -p <pages>    Pages to generate. [default: all]
-    --format, -f <format>  Output format. [default: svg]
+    --format, -f <format>  Output format. [default: pdf]
     --inkscape, -i <args>  Arguments to be passed to inkscape
 
 Arguments:
