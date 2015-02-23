@@ -44,7 +44,9 @@ class Pattern:
         return
 
     def classify(self):
-        if re.match(r'^\d+$', self.pat):
+        if self.pat in ['all', '', None]:
+            self.ptype = 'all'
+        elif re.match(r'^\d+$', self.pat):
             self.ptype = 'num'
         elif re.match(r'^\d+-$', self.pat):
             self.ptype = 'from'
@@ -59,7 +61,9 @@ class Pattern:
         if len(self.children) > 0:
             return any((child.test(num) for child in self.children))
         else:
-            if self.ptype == 'num':
+            if self.ptype == 'all':
+                return True
+            elif self.ptype == 'num':
                 return num == int(self.pat)
             elif self.ptype == 'from':
                 return num >= int(self.pat[:-1])
@@ -72,7 +76,13 @@ class Pattern:
                 return False
 
     def max(self):
-        return max((int(s) for s in re.findall(r'\d+', self.pat)))
+        if len(self.children) > 0:
+            return max((child.max() for child in self.children))
+        else:
+            if self.ptype == 'all':
+                return 1
+            else:
+                return max((int(s) for s in re.findall(r'\d+', self.pat)))
 
     def expand(self, top=None, generator=False):
         if top is None:
@@ -126,13 +136,18 @@ def ns(key, namespaces=namespaces):
             lst[idx] = '{{{0}}}'.format(namespaces[item])
     return ''.join(lst)
 
-def get_svg(svg_original, page):
-    svg = copy(svg_original)
+def check_args(infile=None, output_format=None, pattern=None):
+    if infile is not None:
+        if not os.path.isfile(infile):
+            raise RuntimeError("filename not valid, `{}` does not exist".format(infile))
 
-    for element in svg.iterfind('svg:g', namespaces=namespaces):
-        if element.attrib.get(ns('inkscape:groupmode'), None) == 'layer':
-            if not Pattern(element.attrib.get(ns('inkscape:label'), '')).test(page):
-                element.getparent().remove(element)
+    if output_format is not None:
+        if output_format not in ['svg', 'pdf', 'pdf_tex']:
+            raise RuntimeError("output format not valid. possible values: svg, pdf, pdf_tex")
+
+    if pattern is not None:
+        if not re.match(r'((\d+|\d+-|-\d+|\d+-\d+)(,(\d+|\d+-|-\d+|\d+-\d+))*|all)', pattern):
+            raise RuntimeError("pattern invalid: {}".format(pattern))
 
 def navigate(args):
     from json import dumps
@@ -145,35 +160,59 @@ def navigate(args):
         if len(splitted_outfile) < 3:
             raise RuntimeError("outfile must be in <basename>.<page>.<ext> format")
 
-        ext = splitted_outfile[-1]
-        if ext not in ['svg', 'pdf', 'pdf_tex']:
-            raise RuntimeError("no valid output format. possible values: svg, pdf, pdf_tex")
-
         try:
             page = int(splitted_outfile[-2])
         except ValueError:
             raise RuntimeError("page number must be a valid integer")
 
+        ext = splitted_outfile[-1]
         filename = '.'.join(splitted_outfile[:-2]) + '.svg'
-        if not os.path.isfile(filename):
-            raise RuntimeError("basename not valid, `{}` does not exist".format(filename))
+        check_args(filename, ext)
 
         make(filename, page, ext, args['--inkscape'])
 
-def make(infile, page, output_format, inkscape_args):
-    # in any case: generate the svg file first
-    svg = etree.parse(infile).getroot()
+    elif args['batch'] and args['<infile>'] is not None:
+        check_args(args['<infile>'], args['--format'], args['--pages'])
+
+        if args['--pages'] == 'all':
+            top = max((Pattern(pat_str).max() for layer, pat_str in layers(args['<infile>'])))
+            pages = xrange(1, top + 1)
+        else:
+            pat = Pattern(args['--pages'])
+            pages = pat.expand(generator=True)
+
+        for page in pages:
+            make(args['<infile>'], page, args['--format'], args['--inkscape'])
+
+def layers(svgfile):
+    if type(svgfile) is str:
+        svg = etree.parse(svgfile).getroot()
+    else:
+        svg = svgfile
+
     pat_re = re.compile(r'\<(?P<pattern>(\d+|\d+-|-\d+|\d+-\d+)(,(\d+|\d+-|-\d+|\d+-\d+))*)\>$')
 
     for element in svg.iterfind('svg:g', namespaces=namespaces):
         if element.attrib.get(ns('inkscape:groupmode'), None) == 'layer':
             layer_name = element.attrib.get(ns('inkscape:label'), '')
-            pat_match = pat_re.search(layer_name)
+            pat_match = pat_re.search(layer_name.replace(' ',''))  # ignore spaces
             if pat_match is None:
-                continue
-            p = Pattern(pat_match.group(1))
-            if not p.test(page):
-                element.getparent().remove(element)
+                pat_str = ''
+            else:
+                pat_str = pat_match.group('pattern')
+
+            yield element, pat_str
+
+def make(infile, page, output_format, inkscape_args):
+    # in any case: generate the svg file first
+    svg = etree.parse(infile).getroot()
+
+    for element, pat_str in layers(svg):
+        if pat_str is None:
+            continue
+        p = Pattern(pat_str)
+        if not p.test(page):
+            element.getparent().remove(element)
 
     outfile = '{basename}.{page}.svg'.format(
             basename = basename(infile), page = page)
