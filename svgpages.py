@@ -1,12 +1,18 @@
 #!/usr/bin/env python2
 # coding: utf-8
-"""Split svg files into layers.
+"""Extract a specifiv 'page' from a multilayer svg document.
 
 Usage:
-    svglayers.py <file>
+    svgpages.py <outfile>
+    svgpages.py batch [-p <pages>] [-f <format>] <infile>
 
 Options:
-    <file>  svg file to convert
+    --pages, -p <pages>    Pages to generate. [default: all]
+    --format, -f <format>  Output format. [default: svg]
+
+Arguments:
+    <outfile>  output file, in <basename>.<page>.<extension> format
+    <infile>   input svg file for batch mode
 
 """
 
@@ -14,6 +20,7 @@ __version__ = "0.1"
 from docopt import docopt
 
 import re
+import os.path
 from lxml import etree
 from copy import copy
 
@@ -108,8 +115,58 @@ def get_svg(svg_original, page):
             if not Pattern(element.attrib.get(ns('inkscape:label'), '')).test(page):
                 element.getparent().remove(element)
 
+def navigate(args):
+#   from json import dumps
+#   print dumps(args, indent=4) + '\n'
+
+    if not args['batch'] and args['<outfile>'] is not None:
+        # makefile style
+        splitted_outfile = args['<outfile>'].split('.')
+
+        if len(splitted_outfile) < 3:
+            raise RuntimeError("outfile must be in <basename>.<page>.<ext> format")
+
+        ext = splitted_outfile[-1]
+        if ext not in ['svg', 'pdf', 'pdf_tex']:
+            raise RuntimeError("no valid output format. possible values: svg, pdf, pdf_tex")
+
+        try:
+            page = int(splitted_outfile[-2])
+        except ValueError:
+            raise RuntimeError("page number must be a valid integer")
+
+        filename = '.'.join(splitted_outfile[:-2]) + '.svg'
+        if not os.path.isfile(filename):
+            raise RuntimeError("basename not valid, `{}` does not exist".format(filename))
+
+        make(filename, page, ext)
+
+def make(infile, page, output_format):
+    # in any case: generate the svg file first
+    svg = etree.parse(infile).getroot()
+    pat_re = re.compile(r'\<(?P<pattern>(\d+|\d+-|-\d+|\d+-\d+)(,(\d+|\d+-|-\d+|\d+-\d+))*)\>$')
+
+    for element in svg.iterfind('svg:g', namespaces=namespaces):
+        if element.attrib.get(ns('inkscape:groupmode'), None) == 'layer':
+            layer_name = element.attrib.get(ns('inkscape:label'), '')
+            pat_match = pat_re.search(layer_name)
+            if pat_match is None:
+                continue
+            p = Pattern(pat_match.group(1))
+            if not p.test(page):
+                print "Layer `{}` to be removed.".format(layer_name)
+                element.getparent().remove(element)
+
+    outfile = '{basename}.{page}.svg'.format(
+            basename = '.'.join(infile.split('.')[:-1]), page = page)
+
+    with open(outfile, 'w') as f:
+        f.write(etree.tostring(svg))
+
 def main():
-    svg = etree.parse(args['<file>']).getroot()
+    navigate(args)
+    return
+    svg = etree.parse(args['<outfile>']).getroot()
 
     patterns = []
     for element in svg.iterfind('svg:g', namespaces=namespaces):
