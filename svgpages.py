@@ -3,12 +3,13 @@
 """Extract a specific 'page' from a multilayer svg document.
 
 Usage:
-    svgpages.py [-i <args>...] <outfile>
-    svgpages.py batch [-p <pages>] [-f <format>] [-i <args>...] <infile>
+    svgpages.py [-d <dpi>] [-i <args>...] <outfile>
+    svgpages.py batch [-p <pages>] [-f <format>] [-d <dpi>] [-i <args>...] <infile>
 
 Options:
     --pages, -p <pages>    Pages to generate. [default: all]
     --format, -f <format>  Output format. [default: pdf]
+    --dpi, -d <dpi>        Resolution for png export. [default: 90]
     --inkscape, -i <args>  Arguments to be passed to inkscape
 
 Arguments:
@@ -152,7 +153,7 @@ def check_args(infile=None, output_format=None, pattern=None):
             raise RuntimeError("filename not valid, `{}` does not exist".format(infile))
 
     if output_format is not None:
-        if output_format not in ['svg', 'pdf', 'pdf_tex']:
+        if output_format not in ['svg', 'pdf', 'pdf_tex', 'png']:
             raise RuntimeError("output format not valid. possible values: svg, pdf, pdf_tex")
 
     if pattern is not None:
@@ -242,23 +243,39 @@ def make(infile, page, output_format, inkscape_args):
         generate_pdf(svgfile, inkscape_args, cleanup)
     elif output_format == 'pdf_tex':
         generate_tex(svgfile, inkscape_args, cleanup)
+    elif output_format == 'png':
+        try:
+            dpi = int(args['--dpi'])
+        except ValueError:
+            raise RuntimeError("resolution has to be a valid integer value")
+        generate_png(svgfile, dpi, inkscape_args, cleanup)
 
-def generate_pdf(svgfile, inkscape_args = [], cleanup = False):
+def generate_output(svgfile, inkscape_args = [], cleanup = False):
     for arg in inkscape_args:
         if arg.startswith('--export-area-'):
             break
     else:
         inkscape_args.append('--export-area-page')
-    inkscape_io = [
-            '--export-pdf={}.pdf'.format(basename(svgfile)),
-            '--file={}'.format(svgfile)]
-    inkscape_cmd = [INKSCAPE] + inkscape_args + inkscape_io
+
+    inkscape_args.append('--file={}'.format(svgfile))
+
+    inkscape_cmd = [INKSCAPE] + inkscape_args
 
     def callback():
         if cleanup:
             os.remove(svgfile)
 
     popen_with_callback(inkscape_cmd, callback=callback)
+
+def generate_png(svgfile, dpi = None, inkscape_args = [], cleanup = False):
+    inkscape_args.append('--export-png={}.png'.format(basename(svgfile)))
+    if dpi is not None:
+        inkscape_args.append('--export-dpi={}'.format(dpi))
+    generate_output(svgfile, inkscape_args, cleanup)
+
+def generate_pdf(svgfile, inkscape_args = [], cleanup = False):
+    inkscape_args.append('--export-pdf={}.pdf'.format(basename(svgfile)))
+    generate_output(svgfile, inkscape_args, cleanup)
 
 def generate_tex(svgfile, inkscape_args = [], cleanup = False):
     inkscape_args.append('--export-latex')
